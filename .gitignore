@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Large artifacts travel via Kaggle outputs / direct copy, not git
+data/
+runs/
+models/*.pt
+models/*.onnx
+models/*.engine
+
+# Keep small result files
+!results/
