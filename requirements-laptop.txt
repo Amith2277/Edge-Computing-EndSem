@@ -1,6 +1,7 @@
 # Laptop (CPU only) development environment, Python 3.10.
 # Versions are loose for now; pin exact versions once the Orin/Kaggle versions are tested.
-# ultralytics must be >= 8.3.0 for YOLO11. The exact pin is shared with Kaggle and the Orin (TBD).
+# ultralytics is pinned to 8.3.40 (YOLO11 needs >= 8.3.0). Use the SAME version on Kaggle and the Orin
+# so weights load everywhere. Not yet confirmed to run on the Orin (Python 3.8, torch 2.1).
 numpy
 pandas
 opencv-python
@@ -10,6 +11,6 @@ scikit-learn
 matplotlib
 scipy
 onnx
-ultralytics>=8.3.0
+ultralytics==8.3.40
 # torch (CPU build) is installed separately on the laptop:
 #   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
