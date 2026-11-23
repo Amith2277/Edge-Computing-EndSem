@@ -70,3 +70,17 @@ def test_find_export_follows_symlinks_and_reports_tree(tmp_path):
     with pytest.raises(FileNotFoundError) as e:
         yt.find_export_dir(tmp_path / "input", 0.5)
     assert "nb03" in str(e.value)
+
+
+def test_stage_export_copies_and_resumes(tmp_path):
+    exp = make_export(tmp_path / "in", "yolo_f0.1")
+    for s in ("train", "val", "test"):
+        (exp / "labels" / s).mkdir(parents=True)
+        (exp / "images" / s / "a.jpg").write_bytes(b"x" * 10)
+        (exp / "labels" / s / "a.txt").write_text("0 0.5 0.5 0.1 0.1")
+    dest = tmp_path / "local"
+    assert yt.stage_export(exp, dest) == {"files": 4, "copied": 4, "skipped_existing": 0}
+    assert not (dest / "images" / "test").exists()
+    assert yt.stage_export(exp, dest)["skipped_existing"] == 4
+    y = yt.write_local_data_yaml(dest, tmp_path / "d.yaml", splits=("train", "val")).read_text()
+    assert "val: images/val" in y and "test:" not in y

@@ -1,6 +1,6 @@
 """Helpers for training YOLO11n/s on the notebook 03 export and recording spec section 7 fields.
 
-Pure functions (no ultralytics import) so they are unit-testable and Python 3.8 compatible.
+Mostly pure functions (ultralytics is imported only inside disable_integrations) so they are unit-testable and Python 3.8 compatible.
 Anything that cannot be measured is recorded as "NOT MEASURED", never guessed.
 """
 import csv
@@ -63,17 +63,62 @@ def find_export_dir(search_root, subset_fraction) -> Path:
                                            input_tree(search_root)))
 
 
-def write_local_data_yaml(export_dir, out_path) -> Path:
+def write_local_data_yaml(export_dir, out_path, splits=("train", "val", "test")) -> Path:
     """Write a data.yaml pointing at the export's current location (attached inputs move to /kaggle/input)."""
     export_dir = Path(str(export_dir))
-    for s in ("train", "val", "test"):
+    for s in splits:
         if not (export_dir / "images" / s).is_dir():
             raise FileNotFoundError("missing {}".format(export_dir / "images" / s))
     out = Path(str(out_path))
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text("path: {}\ntrain: images/train\nval: images/val\ntest: images/test\nnames:\n  0: car\n".format(
-        export_dir.as_posix()))
+    out.write_text("path: {}\n{}names:\n  0: car\n".format(
+        export_dir.as_posix(), "".join("{0}: images/{0}\n".format(s) for s in splits)))
     return out
+
+
+def _copy_if_missing(pair):
+    import shutil
+    src, dst = pair
+    if dst.exists() and dst.stat().st_size == src.stat().st_size:
+        return 0
+    tmp = dst.with_name(dst.name + ".part")
+    shutil.copyfile(str(src), str(tmp))
+    tmp.replace(dst)
+    return 1
+
+
+def stage_export(export_dir, dest, splits=("train", "val"), workers: int = 16) -> Dict[str, int]:
+    """Copy the export's images+labels for `splits` to local disk.
+
+    Kaggle input mounts are read-only and slow (~14 images/s measured), so every epoch's val pass and the
+    label scan were I/O bound. Local copies are read fast and let ultralytics save its label cache.
+    Resumable: files already copied with the same size are skipped.
+    """
+    from multiprocessing.pool import ThreadPool
+    export_dir, dest = Path(str(export_dir)), Path(str(dest))
+    pairs = []
+    for s in splits:
+        for kind in ("images", "labels"):
+            sd = export_dir / kind / s
+            if not sd.is_dir():
+                raise FileNotFoundError("missing {}".format(sd))
+            dd = dest / kind / s
+            dd.mkdir(parents=True, exist_ok=True)
+            pairs.extend((f, dd / f.name) for f in sd.iterdir() if f.is_file())
+    with ThreadPool(workers) as pool:
+        copied = sum(pool.imap_unordered(_copy_if_missing, pairs, chunksize=16))
+    return {"files": len(pairs), "copied": copied, "skipped_existing": len(pairs) - copied}
+
+
+INTEGRATIONS = ("raytune", "wandb", "mlflow", "comet", "clearml", "dvc", "neptune", "hub", "tensorboard")
+
+
+def disable_integrations() -> Dict[str, Any]:
+    """Turn off ultralytics experiment-tracker callbacks (Kaggle's preinstalled ray breaks the raytune one,
+    wandb can wait for a login). Must run before the trainer is created, in a fresh kernel."""
+    from ultralytics import settings
+    settings.update({k: False for k in INTEGRATIONS if k in settings})
+    return {k: settings[k] for k in INTEGRATIONS if k in settings}
 
 
 def resolve_train_args(cfg: Dict[str, Any], data_yaml, project, name, smoke: bool = False) -> Dict[str, Any]:
