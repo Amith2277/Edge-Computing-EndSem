@@ -1,0 +1,4 @@
+# Per-slot temporal validation. No future-frame leakage. null = chosen on validation.
+method: null                 # "consecutive" | "window" | "weighted_vote"
+consecutive_required: null
+window_size: null

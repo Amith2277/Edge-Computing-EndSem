@@ -1,0 +1,12 @@
+# Vehicle-to-slot association and cost-sensitive decision. null = chosen on validation only.
+association:
+  method: null               # "box_iou" | "intersection_over_slot" | "center_in_polygon"
+  threshold: null
+decision:
+  threshold_type: null       # "score" (uncalibrated) or "probability" (only if calibrated)
+  cost_false_vacant: null    # C_FV
+  cost_false_occupied: null  # C_FO  (occupied if P(O) > C_FO / (C_FO + C_FV) when calibrated)
+detector:
+  conf_threshold: null       # selected on validation, frozen before test
+  nms_iou: null
+  imgsz: 640

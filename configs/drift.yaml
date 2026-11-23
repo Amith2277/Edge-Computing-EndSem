@@ -1,0 +1,6 @@
+# Drift monitoring: alerts only, never automatic retraining.
+signals: [brightness, confidence, density, occlusion, instability, difficulty, slot_risk]
+baseline_window: null
+current_window: null
+test: null                   # e.g. "psi" or "ks"; chosen after synthetic-drift experiments
+severity_thresholds: {warning: null, critical: null}

@@ -1,0 +1,11 @@
+# Jetson AGX Orin benchmark settings. Record all of these with every run (spec section 4).
+device: {model: "Jetson AGX Orin Developer Kit", memory_gb: 64}
+precision: fp16              # int8 only with a valid calibration set
+imgsz: 640
+batch_size: 1
+warmup_iterations: 50
+benchmark_seconds: 120
+sustained_minutes: 30
+power_modes_to_test: [MAXN, null]    # fill the constrained mode id after checking /etc/nvpmodel.conf
+telemetry: {source: tegrastats, interval_ms: 1000}
+input: {type: replay, path: null}    # replaceable adapter: replay | usb | ip

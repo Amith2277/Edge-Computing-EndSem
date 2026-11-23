@@ -1,0 +1,10 @@
+# Same as train_yolo11n.yaml except the model.
+model: yolo11s.pt
+data: null
+imgsz: 640
+epochs: null
+batch: null
+optimizer: auto
+patience: null
+seed: 42
+subset_fraction: 0.1

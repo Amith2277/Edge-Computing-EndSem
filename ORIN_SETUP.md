@@ -84,7 +84,24 @@ pip install --no-cache-dir <path-or-url-of-the-torch-wheel>
 python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())"   # expect True
 ```
 
-`torchvision` must be built from source to match torch 2.1 (use v0.16.1) and can take 20+ minutes. Keep `--no-cache-dir` on installs to save the scarce disk space.
+`torchvision` must be built from source. **Use v0.15.1, not v0.16.1:** NVIDIA's `2.1.0a0+41361538.nv23.06` wheel is an early 2.1 pre-release without `torch._custom_ops`, so a 0.16.1 build fails on import. The build takes 20+ minutes.
+
+```bash
+pip uninstall -y torchvision    # only if a wrong version is installed
+cd /mnt/nvme/adaptivepark && git clone --branch v0.15.1 --depth 1 https://github.com/pytorch/vision torchvision-0151 && cd torchvision-0151
+export BUILD_VERSION=0.15.1 TORCH_CUDA_ARCH_LIST="8.7" && python3 setup.py install
+cd ~ && python3 -c "import torch, torchvision; print(torch.__version__, torchvision.__version__, torch.cuda.is_available()); from torchvision.ops import nms; print('ops ok')"
+```
+
+Before any install, send temp and cache files to the NVMe (eMMC space is scarce). These exports only last for the current terminal, so repeat them in each new one:
+
+```bash
+source ~/adaptivepark-env/bin/activate && mkdir -p /mnt/nvme/tmp /mnt/nvme/adaptivepark && export TMPDIR=/mnt/nvme/tmp PIP_CACHE_DIR=/mnt/nvme/pipcache
+```
+
+If `mkdir` under `/mnt/nvme` is denied, check `findmnt /mnt/nvme` (must show `/dev/nvme0n1p1`; otherwise `sudo mount -a`) and `ls -ld /mnt/nvme` (owner must be you; otherwise `sudo chown -R $USER:$USER /mnt/nvme`).
+
+> Verified on the Orin on 2026-11-23: torch `2.1.0a0+41361538.nv23.06`, torchvision `0.15.1`, CUDA `True`, `nms` works.
 
 ## Step 4: ultralytics
 
@@ -96,7 +113,17 @@ python3 -c "import torch; print(torch.__version__, torch.cuda.is_available())"  
 python3 -c "from ultralytics import YOLO; YOLO('yolo11n.yaml'); print('ok')"
 ```
 
-If pip tries to download a new torch, stop and use `pip install --no-deps ultralytics==8.3.40`, then install its other dependencies by hand. Test that a `.pt` file trained on Kaggle loads and runs here. **8.3.40 is unverified on this board.**
+If pip tries to download a new torch, stop and use `pip install --no-deps ultralytics==8.3.40`, then install its other dependencies by hand.
+
+> Verified on the Orin on 2026-11-23: `ultralytics 8.3.40` installed without replacing torch. `YOLO('yolo11n.pt').predict(ASSETS/'bus.jpg', device=0)` found 5 boxes (4 people, 1 bus); first call took about 230 ms inference including warm-up (not a benchmark).
+>
+> Known harmless warning: `torchvision==0.15 is incompatible with torch==2.1`. It comes from ultralytics' own version table; the pair works.
+>
+> Network: downloading `bus.jpg` from `ultralytics.com` failed with a connection reset, while `yolo11n.pt` from GitHub worked. Use the bundled image `ultralytics.utils.ASSETS / 'bus.jpg'` for tests and copy datasets/weights over instead of relying on downloads.
+>
+> OpenCV: `pip` installed `opencv-python` 5.0.0.93 into `~/.local`, so `import cv2` gives 5.0.0 (not the system 4.5.4). It works with ultralytics so far. Note this version in every experiment's environment record.
+>
+> **Still unverified:** that a `.pt` trained on Kaggle (same ultralytics 8.3.40) loads and runs here. Test as soon as the first checkpoint exists.
 
 ## Step 5: Power modes for benchmarks
 

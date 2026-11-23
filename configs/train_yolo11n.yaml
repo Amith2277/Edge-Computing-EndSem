@@ -1,0 +1,10 @@
+# Training settings. Keep n and s identical except `model` (fair comparison).
+model: yolo11n.pt
+data: null                   # path to generated YOLO data yaml
+imgsz: 640
+epochs: null
+batch: null
+optimizer: auto
+patience: null               # early stopping
+seed: 42
+subset_fraction: 0.1         # initial working model; full data later by changing only this value

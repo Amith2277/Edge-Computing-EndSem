@@ -1,0 +1,29 @@
+# Adaptive controller. Every value marked null is NEEDS_TUNING: it must be chosen on validation data only
+# (spec sections 10-13). Nothing here is a universal optimum. The controller must refuse to run with nulls
+# unless an explicit `allow_untuned: true` is set for smoke tests.
+allow_untuned: false
+
+difficulty:                  # D = w1*B + w2*M + w3*C + w4*V + w5*O + w6*S
+  weights: {brightness: null, motion: null, confidence: null, density: null, occlusion: null, instability: null}
+  # constraints: weights >= 0 and sum to 1; features normalised to [0,1]; missing features handled explicitly
+
+slot_risk:                   # R = alpha*U + beta*Delta + gamma*A + delta*O
+  alpha: null
+  beta: null
+  gamma: null
+  delta: null
+  global_aggregation: null   # "max" or "topk_mean", chosen on validation
+  topk: null
+
+modes:
+  reduced:  {model: yolo11n, cadence_frames: null}
+  standard: {model: yolo11n, cadence_frames: 1}
+  enhanced: {model: yolo11s, verification: null}
+  thresholds: {reduced_below: null, enhanced_above: null}   # on D and on global slot risk
+  hysteresis_margin: null
+  min_dwell_frames: null
+
+freshness:
+  max_observation_age: null  # seconds if timestamps are reliable, else frames
+  age_unit: null             # "seconds" or "frames"
+  skipped_frame_is_vacant: false   # must stay false (spec section 13)

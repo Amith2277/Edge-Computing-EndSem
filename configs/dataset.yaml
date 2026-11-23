@@ -1,0 +1,18 @@
+# Dataset configuration. Paths differ per machine: set `root` here or via env ADAPTIVEPARK_DATA_ROOT.
+dataset:
+  name: MetaPKLot
+  root: null                 # e.g. /kaggle/input/<dataset-slug>
+  subset_fraction: 1.0       # 1.0 = full data. Use e.g. 0.1 for the initial working model.
+  seed: 42
+
+audit:
+  smoke_max_files: 200       # evenly spaced sample used in smoke mode
+  compute_hashes: true       # sha256 per file (needed for exact-duplicate detection)
+  near_duplicate:
+    enabled: true
+    hash_size: 8             # average-hash grid (8x8 = 64 bits)
+    max_hamming: 2           # <= this many differing bits counts as near-duplicate
+  tree_depth: 3
+  annotation_exts: [".json", ".xml", ".txt", ".csv", ".yaml", ".yml", ".mat", ".npy", ".pkl"]
+  image_exts: [".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"]
+  video_exts: [".mp4", ".avi", ".mov", ".mkv"]
