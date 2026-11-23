@@ -2,8 +2,22 @@
 dataset:
   name: MetaPKLot
   root: null                 # e.g. /kaggle/input/<dataset-slug>
-  subset_fraction: 1.0       # 1.0 = full data. Use e.g. 0.1 for the initial working model.
+  subset_fraction: 0.1       # train split only (val/test always full). 0.1 = initial working model; 1.0 = full data.
   seed: 42
+  sources: [PKLot, CNRPark-EXT]   # PLds has annotations but no images in the Kaggle mirror
+  annotation_variant: original    # matches the images on disk (cropped = coordinates of ROI-cropped images)
+
+split:
+  group: site_day            # a (site, day) is never split across train/val/test; CNR cameras share days
+  ratios: [0.7, 0.15, 0.15]  # train, val, test by days per site
+  seed: 42
+  min_days_for_coverage: 3   # climates seen on >= 3 days of a site must appear in that site's val and test
+  holdout_cameras: []        # optional camera-held-out test, e.g. ["CNRPark-EXT/camera9"] (removed from training)
+  flagged_days: keep         # non-working / non-representative days are kept and tagged in day_flag
+
+export:
+  roi_mask: true             # gray out pixels outside annotationsRectangle (unlabelled region)
+  workers: 8
 
 audit:
   smoke_max_files: 200       # evenly spaced sample used in smoke mode
