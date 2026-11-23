@@ -1,10 +1,25 @@
 # Training settings. Keep n and s identical except `model` (fair comparison).
-model: yolo11n.pt
-data: null                   # path to generated YOLO data yaml
-imgsz: 640
-epochs: null
-batch: null
-optimizer: auto
-patience: null               # early stopping
+# These are training hyperparameters chosen up front (not tuned on test). Changing any of them
+# for one model means changing it for the other too.
+model: yolo11n.pt            # COCO-pretrained starting weights; fine-tuned on MetaPKLot (single class `car`)
+data: null                   # filled by the notebook (data.yaml of the notebook 03 export)
+imgsz: 640                   # cars are ~24 px at 640; a larger size is an open item after this run
+epochs: 100
+batch: 32                    # fits a 16 GB T4 for both n and s at 640
+optimizer: auto              # ultralytics picks; the chosen optimizer is recorded from the trainer
+patience: 20                 # early stopping on val fitness (0.1*mAP50 + 0.9*mAP50-95)
 seed: 42
+deterministic: true
+workers: 4                   # Kaggle notebooks have 4 CPU cores
+cache: ram                   # ~1.2k train + 2.3k val images; avoids re-decoding JPEGs every epoch
+save_period: 10              # extra checkpoint every 10 epochs (last.pt is saved every epoch anyway)
+amp: true
 subset_fraction: 0.1         # initial working model; full data later by changing only this value
+smoke:                       # pipeline check: 1 epoch on 10% of the (already subsampled) train set
+  epochs: 1
+  fraction: 0.1
+  cache: false
+benchmark:                   # Kaggle GPU numbers (labelled "Kaggle", never used as Jetson numbers)
+  n_images: 100
+  warmup: 10
+  half: true
