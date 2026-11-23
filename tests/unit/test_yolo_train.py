@@ -56,3 +56,17 @@ def test_latency_summary():
     s = yt.latency_summary([float(i) for i in range(1, 101)])
     assert s["n"] == 100 and s["p50_ms"] == 50.5 and s["max_ms"] == 100.0
     assert yt.latency_summary([])["status"] == yt.NOT_MEASURED
+
+
+def test_find_export_follows_symlinks_and_reports_tree(tmp_path):
+    real = make_export(tmp_path / "real", "yolo_f0.1")
+    inp = tmp_path / "input" / "notebooks" / "me"
+    inp.mkdir(parents=True)
+    try:
+        (inp / "nb03").symlink_to(real.parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks not permitted here")
+    assert yt.find_export_dir(tmp_path / "input", 0.1).resolve() == real.resolve()
+    with pytest.raises(FileNotFoundError) as e:
+        yt.find_export_dir(tmp_path / "input", 0.5)
+    assert "nb03" in str(e.value)

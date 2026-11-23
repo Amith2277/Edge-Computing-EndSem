@@ -4,7 +4,6 @@ Pure functions (no ultralytics import) so they are unit-testable and Python 3.8 
 Anything that cannot be measured is recorded as "NOT MEASURED", never guessed.
 """
 import csv
-import glob
 import math
 import os
 from pathlib import Path
@@ -21,18 +20,47 @@ AUG_KEYS = ("hsv_h", "hsv_s", "hsv_v", "degrees", "translate", "scale", "shear",
 LR_KEYS = ("lr0", "lrf", "cos_lr", "momentum", "weight_decay", "warmup_epochs", "warmup_momentum", "warmup_bias_lr")
 
 
+SKIP_DIRS = {"images", "labels"}  # never descend into YOLO image/label folders (thousands of files)
+
+
+def find_files(search_root, name: str) -> List[Path]:
+    """All files called `name` under search_root. Follows symlinks (Kaggle may mount inputs as links)."""
+    out = []
+    for cur, dirs, files in os.walk(str(search_root), followlinks=True):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        if name in files:
+            out.append(Path(cur) / name)
+    return out
+
+
+def input_tree(search_root, depth: int = 4, max_entries: int = 60) -> str:
+    """Short listing of the folders under search_root, to show what is actually attached."""
+    root = Path(str(search_root))
+    lines = []
+    for cur, dirs, files in os.walk(str(root), followlinks=True):
+        rel = Path(cur).relative_to(root)
+        level = len(rel.parts)
+        dirs[:] = sorted(dirs) if level < depth else []
+        lines.append("{}{}/  ({} files)".format("  " * level, rel.as_posix() if level else str(root), len(files)))
+        if len(lines) >= max_entries:
+            lines.append("  ...")
+            break
+    return "\n".join(lines) if lines else "{} does not exist or is empty".format(root)
+
+
 def find_export_dir(search_root, subset_fraction) -> Path:
     """Locate the notebook 03 YOLO export (folder with data.yaml + images/train) under an input root."""
     want = "yolo_f{}".format(subset_fraction)
-    cands = sorted(Path(p).parent for p in glob.glob(os.path.join(str(search_root), "**", "data.yaml"),
-                                                       recursive=True))
+    cands = [p.parent for p in find_files(search_root, "data.yaml")]
     cands = [c for c in cands if (c / "images" / "train").is_dir()]
     exact = [c for c in cands if c.name == want]
     if exact:
         return exact[0]
-    raise FileNotFoundError("No YOLO export named {} (with data.yaml and images/train) under {}. Found: {}. "
-                            "Attach notebook 03's output (Save Version first).".format(
-                                want, search_root, [str(c) for c in cands] or "none"))
+    raise FileNotFoundError(
+        "No YOLO export named {} (with data.yaml and images/train) under {}. Exports found: {}.\n"
+        "Attach notebook 03's saved output (Add Input -> Your Work -> notebook 03), or set EXPORT_DIR.\n"
+        "What is attached now:\n{}".format(want, search_root, [str(c) for c in cands] or "none",
+                                           input_tree(search_root)))
 
 
 def write_local_data_yaml(export_dir, out_path) -> Path:
