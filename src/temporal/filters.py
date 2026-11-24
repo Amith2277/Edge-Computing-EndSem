@@ -15,6 +15,10 @@ Methods
                  (normalised margin >= `gate`, 0 at the threshold, 1 at score 0 or 1) flips the state at once;
                  a marginal one needs `k` consecutive disagreeing frames. Clear arrivals and departures are not
                  delayed, while near-threshold flicker is held back.
+- asymmetric:    cost-aware consecutive support. A flip to occupied needs `k_occ` disagreeing frames, a flip to
+                 vacant `k_vac`. k_occ = 1 < k_vac holds back false vacants (the costlier error for a driver)
+                 without delaying arrivals. Optional `gate`: a flip in either direction happens at once when the
+                 margin is >= gate.
 
 State codes: 1 occupied, 0 vacant, -1 no observation of that slot in this frame (not a vacant claim).
 Python 3.8 compatible, numpy only (runs on the Orin).
@@ -23,8 +27,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
-METHODS = ("none", "consecutive", "window", "weighted_vote", "gated")
-PARAMS = ("k", "w", "alpha", "gate")
+METHODS = ("none", "consecutive", "window", "weighted_vote", "gated", "asymmetric")
+PARAMS = ("k", "w", "alpha", "gate", "k_occ", "k_vac")
 
 
 def param_grid() -> List[Dict[str, Any]]:
@@ -70,8 +74,11 @@ class TemporalFilter(object):
         first = obs & (self.state < 0)
         if m == "none":
             new[obs] = raw[obs]
-        elif m in ("consecutive", "gated"):
-            k = int(self.cfg["k"])
+        elif m in ("consecutive", "gated", "asymmetric"):
+            if m == "asymmetric":
+                k = np.where(raw == 1, int(self.cfg["k_occ"]), int(self.cfg["k_vac"]))
+            else:
+                k = int(self.cfg["k"])
             new[first] = raw[first]
             o = obs & ~first
             agree = o & (raw == self.state)
@@ -79,7 +86,7 @@ class TemporalFilter(object):
             self.run[agree] = 0
             self.run[disagree] += 1
             flip = disagree & (self.run >= k)
-            if m == "gated":
+            if m == "gated" or (m == "asymmetric" and self.cfg.get("gate") is not None):
                 flip |= disagree & (margin(score, self.thr) >= float(self.cfg["gate"]))
             new[flip] = raw[flip]
             self.run[flip] = 0
