@@ -10,8 +10,16 @@ decision:
   score_threshold:           # per model, max val macro-F1; flat between ~0.1 and ~0.6
     yolo11n: 0.225
     yolo11s: 0.2
-  cost_false_vacant: null    # C_FV (notebook 11)
+  cost_false_vacant: null    # C_FV: a deployment choice (no measured cost exists); notebook 11 reports ratios 0.5-20
   cost_false_occupied: null  # C_FO  (occupied if P(O) > C_FO / (C_FO + C_FV) when calibrated)
+  calibration:               # notebook 11 full run 2026-11-24 (run cst-20261124-174633-178122)
+    method: isotonic         # chosen by val cross-fitted log loss over Platt for both models
+    params: artifacts/cost_sensitive/cost_sensitive_record.json   # calibration.<model>.params.isotonic (step function)
+    # test ECE: n 0.0006, s 0.0011 (raw score 0.060 / 0.056); worst site CNRPark-EXT 0.007 / 0.008
+  # With isotonic P(O) and the Bayes threshold, the decision equals the val cost-minimising score threshold
+  # (same FV / FO on test within a few slots). Score equivalents on test (n / s): ratio 1 -> 0.235 / 0.20,
+  # 2 -> 0.15 / 0.14, 5 -> 0.11 / 0.05, >= 10 -> 0.05 / 0.05 (= any supporting detection; the FV floor is then
+  # occupied slots with no detection at all: n 182, s 215 on test).
 detector:
   conf_threshold: 0.05       # floor of the cached detections; the slot decision uses decision.score_threshold
   nms_iou: 0.7

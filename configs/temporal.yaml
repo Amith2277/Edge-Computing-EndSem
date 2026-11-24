@@ -9,5 +9,10 @@ per_model:
 consecutive_required: 2      # k: frames a near-threshold change needs (gated) / every change needs (consecutive)
 gate: 0.75                   # normalised score margin at or above which a change is accepted at once
 window_size: null            # not chosen (window filters lost 2-5 points of accuracy on val)
-max_gap_factor: 3.0          # gap above 3x the camera's median spacing starts a new sequence
+# Cost view (notebook 11, test, at the notebook 07 score thresholds): the gated filter above costs MORE than no
+# filter at every C_FV/C_FO >= 1 (it delays arrivals: FV n 343 -> 596). Cost-aware alternative, val-chosen for
+# ratios >= 5 (n) and >= 1 (s): asymmetric k_occ 1, k_vac 3, gate 0.75 -> FV n 343 -> 260, s 329 -> 254; cost at
+# ratio 5: n 9.40 -> 8.24, s 8.22 -> 6.97 per 1000; false flips n 1.18 -> 0.86 per 1000 slot-frames.
+cost_aware: {method: asymmetric, k_occ: 1, k_vac: 3, gate: 0.75}
+max_gap_factor: 3.0         # gap above 3x the camera's median spacing starts a new sequence
 tolerance_frames: 3          # evaluation only: a true change counts as detected within this many frames
