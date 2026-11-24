@@ -1,4 +1,13 @@
-# Per-slot temporal validation. No future-frame leakage. null = chosen on validation.
-method: null                 # "consecutive" | "window" | "weighted_vote"
-consecutive_required: null
-window_size: null
+# Per-slot temporal validation (src/temporal/filters.py). No future-frame leakage.
+# Chosen on val by notebook 08 (full run 2026-11-24, 47 val sequences, 205,291 slot-frames). Rule fixed before
+# test: within 0.001 of the best val macro-F1, fewest false transitions per 1000 slot-frames, then shortest delay.
+# Frames are 5 min (PKLot) / 30 min (CNRPark-EXT) apart, so k counts frames at that spacing.
+method: gated                # "none" | "consecutive" | "window" | "weighted_vote" | "gated"
+per_model:
+  yolo11n: {method: gated, k: 2, gate: 0.75}
+  yolo11s: {method: gated, k: 2, gate: 0.75}
+consecutive_required: 2      # k: frames a near-threshold change needs (gated) / every change needs (consecutive)
+gate: 0.75                   # normalised score margin at or above which a change is accepted at once
+window_size: null            # not chosen (window filters lost 2-5 points of accuracy on val)
+max_gap_factor: 3.0          # gap above 3x the camera's median spacing starts a new sequence
+tolerance_frames: 3          # evaluation only: a true change counts as detected within this many frames
