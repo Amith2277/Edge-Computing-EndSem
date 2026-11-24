@@ -11,6 +11,10 @@ Methods
 - weighted_vote: exponentially weighted average of the slot score (weight `alpha` on the newest frame),
                  compared with the same score threshold. Weights come from the score itself, so a confident
                  detection counts more than a marginal one.
+- gated:         confidence-gated consecutive support. A decision whose score is far from the threshold
+                 (normalised margin >= `gate`, 0 at the threshold, 1 at score 0 or 1) flips the state at once;
+                 a marginal one needs `k` consecutive disagreeing frames. Clear arrivals and departures are not
+                 delayed, while near-threshold flicker is held back.
 
 State codes: 1 occupied, 0 vacant, -1 no observation of that slot in this frame (not a vacant claim).
 Python 3.8 compatible, numpy only (runs on the Orin).
@@ -19,7 +23,8 @@ from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
-METHODS = ("none", "consecutive", "window", "weighted_vote")
+METHODS = ("none", "consecutive", "window", "weighted_vote", "gated")
+PARAMS = ("k", "w", "alpha", "gate")
 
 
 def param_grid() -> List[Dict[str, Any]]:
@@ -27,11 +32,19 @@ def param_grid() -> List[Dict[str, Any]]:
     g += [{"method": "consecutive", "k": k} for k in (2, 3, 4)]
     g += [{"method": "window", "w": w} for w in (3, 5, 7)]
     g += [{"method": "weighted_vote", "alpha": a} for a in (0.3, 0.5, 0.7)]
+    g += [{"method": "gated", "k": 2, "gate": x} for x in (0.25, 0.5, 0.75)]
     return g
 
 
+def margin(score: np.ndarray, thr: float) -> np.ndarray:
+    """Normalised distance from the threshold: 0 at thr, 1 at score 0 (below) or 1 (above)."""
+    score = np.asarray(score, float)
+    span = np.where(score < thr, thr, 1.0 - thr)
+    return np.clip(np.abs(score - thr) / np.where(span > 0, span, 1.0), 0.0, 1.0)
+
+
 def label(cfg: Dict[str, Any]) -> str:
-    p = [("k", cfg.get("k")), ("w", cfg.get("w")), ("alpha", cfg.get("alpha"))]
+    p = [(n, cfg.get(n)) for n in PARAMS]
     return cfg["method"] + "".join(" {}={}".format(n, v) for n, v in p if v is not None)
 
 
@@ -57,7 +70,7 @@ class TemporalFilter(object):
         first = obs & (self.state < 0)
         if m == "none":
             new[obs] = raw[obs]
-        elif m == "consecutive":
+        elif m in ("consecutive", "gated"):
             k = int(self.cfg["k"])
             new[first] = raw[first]
             o = obs & ~first
@@ -66,6 +79,8 @@ class TemporalFilter(object):
             self.run[agree] = 0
             self.run[disagree] += 1
             flip = disagree & (self.run >= k)
+            if m == "gated":
+                flip |= disagree & (margin(score, self.thr) >= float(self.cfg["gate"]))
             new[flip] = raw[flip]
             self.run[flip] = 0
         elif m == "window":

@@ -21,6 +21,16 @@ def test_methods_on_a_flicker():
     assert one_slot(seq, {"method": "weighted_vote", "alpha": 0.5}) == [1, 1, 1, 1, 1, 0, 0, 0, 0]
 
 
+def test_gated_flips_at_once_on_confident_scores_only():
+    cfg = {"method": "gated", "k": 2, "gate": 0.5}
+    # marginal dip 0.4 (margin 0.2) is held; confident departure 0.0 flips at once; confident arrival 0.95 at once
+    assert one_slot([0.9, 0.4, 0.9, 0.0, 0.0, 0.95], cfg) == [1, 1, 1, 0, 0, 1]
+    # two marginal frames in a row still flip (k=2)
+    assert one_slot([0.9, 0.4, 0.45, 0.9], cfg) == [1, 1, 0, 1]
+    assert tf.margin(np.array([0.5, 0.0, 1.0, 0.25]), 0.5).tolist() == [0.0, 1.0, 1.0, 0.5]
+    assert tf.label(cfg) == "gated k=2 gate=0.5"
+
+
 def test_unobserved_frames_are_not_vacant_and_do_not_count():
     seq = [0.9, 0.1, 0.1, 0.1]
     obs = [1, 0, 1, 1]
