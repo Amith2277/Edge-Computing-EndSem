@@ -21,15 +21,25 @@ slot_risk:                   # R = alpha*U + beta*Delta + gamma*A + delta*O
   global_aggregation: topk_mean   # val capture AUC of reuse errors: max 0.695, top-3 0.747, top-5 0.759, top-10 0.761
   topk: 10
 
+# Modes and freshness: chosen on val by notebook 10 (full run 2026-11-24, run ctl-20261124-172618-1705c4).
+# Rule (fixed before test): cheapest setting with val macro-F1 >= n + 0.5 x (s - n) = 0.9947. Thresholds are val
+# quantiles of D / global risk / max slot risk under Standard mode. Cost unit: YOLO11s = 2.63 x YOLO11n (Kaggle T4
+# batched ratio, NOT a Jetson number). Test: macro-F1 0.9966 at cost 1.313 (n 0.9962 / 1.0, s 0.9971 / 2.63).
+operating_point: accuracy    # "accuracy" (default, below) or "efficiency" (efficiency_point)
 modes:
-  reduced:  {model: yolo11n, cadence_frames: null}
+  reduced:  {model: yolo11n, cadence_frames: 2}   # unused at the accuracy point (reduced_below is null)
   standard: {model: yolo11n, cadence_frames: 1}
-  enhanced: {model: yolo11s, verification: null}
-  thresholds: {reduced_below: null, enhanced_above: null}   # on D and on global slot risk
-  hysteresis_margin: null
-  min_dwell_frames: null
+  enhanced: {model: yolo11s, verification: null}  # no separate verification step tested
+  thresholds:
+    reduced_below: null       # val: every setting that allowed Reduced cost accuracy at 5-30 min frame spacing
+    enhanced_above: {difficulty: 0.2581, global_slot_risk: 0.4804}   # val 90th percentiles
+    critical_slot_risk: 0.8419   # val 95th percentile of max slot risk: forced refresh even when D is low
+  hysteresis_margin: 0.0
+  min_dwell_frames: 1
+efficiency_point:            # cheapest val setting with no loss vs fixed YOLO11n (val 0.9943 at 1.132; test 0.9964 at 1.201, 11% frames skipped)
+  see: artifacts/controller/controller_record.json (chosen.adaptive.efficiency_point)
 
 freshness:
-  max_observation_age: null  # seconds if timestamps are reliable, else frames
-  age_unit: null             # "seconds" or "frames"
+  max_observation_age: 1800  # seconds; test max-age violations 0 at the accuracy point
+  age_unit: seconds
   skipped_frame_is_vacant: false   # must stay false (spec section 13)
