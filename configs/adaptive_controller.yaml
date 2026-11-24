@@ -4,16 +4,22 @@
 allow_untuned: false
 
 difficulty:                  # D = w1*B + w2*M + w3*C + w4*V + w5*O + w6*S
-  weights: {brightness: null, motion: null, confidence: null, density: null, occlusion: null, instability: null}
-  # constraints: weights >= 0 and sum to 1; features normalised to [0,1]; missing features handled explicitly
+  # chosen on val by notebook 09 (full run 2026-11-24): max val capture AUC of slots YOLO11n wrong & YOLO11s right
+  # (val 0.743, test 0.689; equal weights test 0.582). B, M from the current image; C, V, O, S from the previous frame.
+  weights: {brightness: 0.0, motion: 0.1, confidence: 0.5, density: 0.0, occlusion: 0.4, instability: 0.0}
+  scales: {motion: 0.1399, occlusion: 0.2779}   # val 99th percentile of the raw values; value / scale, clipped to [0,1]
+  instability_frames: 3
+  # constraints: weights >= 0 and sum to 1; features normalised to [0,1]; missing features re-normalised, never 0
 
 slot_risk:                   # R = alpha*U + beta*Delta + gamma*A + delta*O
-  alpha: null
-  beta: null
-  gamma: null
-  delta: null
-  global_aggregation: null   # "max" or "topk_mean", chosen on validation
-  topk: null
+  # chosen on val by notebook 09: max val slot ROC AUC of "reusing the last state would be wrong" (val 0.688, test 0.704)
+  alpha: 0.0                 # U uncertainty of the last score
+  beta: 0.8                  # Delta change between the last two scores
+  gamma: 0.1                 # A age / max_age_s_for_A
+  delta: 0.1                 # O neighbour-vehicle cover of the slot
+  max_age_s_for_A: 1800
+  global_aggregation: topk_mean   # val capture AUC of reuse errors: max 0.695, top-3 0.747, top-5 0.759, top-10 0.761
+  topk: 10
 
 modes:
   reduced:  {model: yolo11n, cadence_frames: null}
