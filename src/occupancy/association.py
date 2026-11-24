@@ -171,6 +171,7 @@ def best(rows: List[Dict[str, Any]], key: str = "macro_f1", method: Optional[str
 
 
 def uncertainty(score: float, conf_thr: float) -> float:
-    """1 at the decision threshold, 0 at the far end of the score range. A margin measure, not a probability."""
-    span = max(conf_thr, 1.0 - conf_thr)
+    """1 at the decision threshold, 0 at either end of the score range (0 or 1). A margin measure, not a probability.
+    Each side is scaled on its own, so a slot with no supporting detection (score 0) is fully certain vacant."""
+    span = conf_thr if score < conf_thr else 1.0 - conf_thr
     return round(max(0.0, 1.0 - abs(score - conf_thr) / span), 4) if span > 0 else 1.0

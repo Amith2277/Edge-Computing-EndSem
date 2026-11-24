@@ -71,6 +71,8 @@ def test_metrics_sweep_and_best():
     assert b["accuracy"] == 1.0 and 0.3 < b["conf_thr"] <= 0.8 and not b["exclusive"]
     assert asc.best(rows, method="center_in_polygon")["method"] == "center_in_polygon"
     assert asc.uncertainty(0.5, 0.5) == 1.0 and asc.uncertainty(1.0, 0.5) == 0.0
+    assert asc.uncertainty(0.0, 0.25) == 0.0 and asc.uncertainty(1.0, 0.25) == 0.0   # both ends certain
+    assert asc.uncertainty(0.125, 0.25) == 0.5 and asc.uncertainty(0.625, 0.25) == 0.5
 
 
 def test_slot_record():
