@@ -1,12 +1,18 @@
-# Vehicle-to-slot association and cost-sensitive decision. null = chosen on validation only.
+# Vehicle-to-slot association and cost-sensitive decision. Values chosen on validation only (notebook 07 full run,
+# 2026-11-24, val = 2304 images / 205,291 slot observations), frozen before test.
 association:
-  method: null               # "box_iou" | "intersection_over_slot" | "center_in_polygon"
-  threshold: null
+  method: box_iou            # "box_iou" | "intersection_over_slot" | "center_in_polygon" (all three within 0.0012 val macro-F1)
+  threshold: 0.2             # box-polygon IoU a detection needs to support a slot
+  exclusive: true            # each detection supports only the slot it overlaps most
+  min_roi_fraction: 0.5      # slots less than this inside the annotation rectangle are 'unknown'
 decision:
-  threshold_type: null       # "score" (uncalibrated) or "probability" (only if calibrated)
-  cost_false_vacant: null    # C_FV
+  threshold_type: score      # uncalibrated detector score (max confidence of supporting detections); calibration: notebook 11
+  score_threshold:           # per model, max val macro-F1; flat between ~0.1 and ~0.6
+    yolo11n: 0.225
+    yolo11s: 0.2
+  cost_false_vacant: null    # C_FV (notebook 11)
   cost_false_occupied: null  # C_FO  (occupied if P(O) > C_FO / (C_FO + C_FV) when calibrated)
 detector:
-  conf_threshold: null       # selected on validation, frozen before test
-  nms_iou: null
+  conf_threshold: 0.05       # floor of the cached detections; the slot decision uses decision.score_threshold
+  nms_iou: 0.7
   imgsz: 640
