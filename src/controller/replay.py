@@ -40,7 +40,7 @@ def run_sequence(seq: Dict[str, Any], strategy: str, cfg: Dict[str, Any], ctx: D
     ctl = ModeController(_controller_cfg(strategy, cfg, ctx)) if strategy in ("scene_only", "adaptive") else None
     last_detf, hist = None, []
     out = {"pred": [], "age_s": [], "stale": [], "model": [], "mode": [], "reasons": [], "D": np.full(T, np.nan),
-           "Rg": np.full(T, np.nan), "Rmax": np.full(T, np.nan)}
+           "Rg": np.full(T, np.nan), "Rmax": np.full(T, np.nan), "F": np.full((T, 6), np.nan)}   # F: B, M, C, V, O, S
     for t in range(T):
         cols = np.asarray(seq["cols"][t], int)
         vcols = cols[seq["valid"][t]]
@@ -63,6 +63,7 @@ def run_sequence(seq: Dict[str, Any], strategy: str, cfg: Dict[str, Any], ctx: D
         first = bool(never.all()) if len(ages) else True
         age_max = float(np.inf) if never.any() else (float(ages.max()) if len(ages) else np.nan)
         out["D"][t], out["Rg"][t], out["Rmax"][t] = D, Rg, Rmax
+        out["F"][t] = Fv[0]
         if strategy == "fixed_n":
             dec = {"mode": "standard", "run": True, "model": ctx["light"], "reasons": []}
         elif strategy == "fixed_s":
