@@ -22,7 +22,7 @@ def blur(im: Image.Image, radius: float) -> Image.Image:
 
 def noise(im: Image.Image, sigma: float, seed: int = 0) -> Image.Image:
     a = np.asarray(im, np.float32)
-    a = a + np.random.RandomState(seed).normal(0, sigma, a.shape).astype(np.float32)
+    a = a + np.random.RandomState(int(seed) % (2 ** 32)).normal(0, sigma, a.shape).astype(np.float32)
     return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 
