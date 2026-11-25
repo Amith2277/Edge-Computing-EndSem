@@ -7,17 +7,21 @@ here retrains or changes a model.
 - Baseline: per camera and signal, 101 quantiles (0..100th percentile) of the validation values. The same compact
   baseline is used in the notebook and at runtime on the Orin, so both compute identical scores.
 - Current: the last `window` frames of that camera (values that are missing, NaN, are dropped).
-- Score per signal: PSI (population stability index over the baseline deciles) or KS (largest gap between the
-  two cumulative distributions).
+- Score per signal: PSI (population stability index over the baseline deciles), KS (largest gap between the
+  two cumulative distributions) or median shift (|window median - baseline median| / baseline spread). PSI and KS
+  are bounded and saturate on short windows (every value outside the baseline gives the same score); median shift
+  keeps growing with the size of the change.
 - Thresholds: per-signal warning threshold and one overall critical threshold, set from clean validation windows
-  so the false-alarm rate on clean data is fixed (see `calibrate`).
+  so the false-alarm rate on clean data is at most the chosen rate, ties included (see `calibrate`). A signal whose
+  clean windows sit at their maximum value too often gets a threshold just above that maximum; for PSI and KS,
+  whose maximum is fixed, the signal then cannot alert at all (listed as `saturated`).
 numpy only, Python 3.8.
 """
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 
-SIGNALS = ("brightness", "confidence", "density", "occlusion", "instability", "difficulty", "slot_risk")
+SIGNALS = ("brightness", "confidence", "density", "occlusion", "instability", "difficulty", "slot_risk", "misalignment")
 DESCRIPTION = {
     "brightness": "image darkness (1 - mean gray level of the slot region)",
     "confidence": "detection uncertainty (1 - mean confidence of accepted detections)",
@@ -26,8 +30,9 @@ DESCRIPTION = {
     "instability": "share of slots that changed state over the last frames",
     "difficulty": "global scene difficulty D",
     "slot_risk": "global slot transition risk R (top-10 mean)",
+    "misalignment": "vehicle-slot misalignment (1 - mean best IoU of accepted detections with a slot polygon)",
 }
-TESTS = ("psi", "ks")
+TESTS = ("psi", "ks", "median_shift")
 SEVERITY = ("ok", "warning", "critical")
 
 
@@ -61,11 +66,38 @@ def ks(base_q: np.ndarray, cur: np.ndarray) -> float:
     return float(np.max(np.abs(fb - fc)))
 
 
+def median_shift(base_q: np.ndarray, cur: np.ndarray) -> float:
+    """|median(window) - baseline median| in units of the baseline spread (IQR, with wider fallbacks when the
+    baseline is nearly constant). Unbounded, so a large change scores higher than a small one."""
+    cur = np.asarray(cur, float); cur = cur[~np.isnan(cur)]
+    if not len(cur) or base_q is None:
+        return float("nan")
+    spread = max(base_q[75] - base_q[25], 0.5 * (base_q[95] - base_q[5]), 0.1 * (base_q[100] - base_q[0]), 1e-3)
+    return float(abs(np.median(cur) - base_q[50]) / spread)
+
+
+def slot_misalignment(pairs: np.ndarray, score_thr: float) -> float:
+    """1 - mean over accepted detections (conf >= score_thr) touching a slot of their best IoU with a slot polygon.
+    `pairs` is the structured array of association.image_pairs. NaN when no accepted detection touches a slot.
+    A bumped camera moves vehicles off the fixed slot polygons, which raises this value."""
+    if pairs is None or not len(pairs):
+        return float("nan")
+    p = pairs[pairs["conf"] >= score_thr]
+    if not len(p):
+        return float("nan")
+    det = p["det"].astype(int)
+    best = np.zeros(det.max() + 1)
+    np.maximum.at(best, det, p["iou"].astype(float))
+    return float(1.0 - best[np.unique(det)].mean())
+
+
 def score(test: str, base_q: Optional[np.ndarray], cur: np.ndarray) -> float:
     if test == "psi":
         return psi(base_q, cur)
     if test == "ks":
         return ks(base_q, cur)
+    if test == "median_shift":
+        return median_shift(base_q, cur)
     raise ValueError("unknown drift test {}".format(test))
 
 
@@ -79,24 +111,52 @@ def window_scores(test: str, baseline: Dict[str, np.ndarray], window: Dict[str, 
     return out
 
 
-def calibrate(clean_scores: List[Dict[str, float]], warn_rate: float = 0.05, crit_rate: float = 0.01) -> Dict[str, Any]:
-    """Thresholds from clean (no-drift) windows. Warning: per signal at the 1 - warn_rate / n_signals quantile
-    (Bonferroni, so about warn_rate of clean windows raise a warning on any signal). Critical: the 1 - crit_rate
-    quantile of the overall normalised score max_s(score_s / warning_s)."""
+def upper_threshold(x: np.ndarray, rate: float) -> float:
+    """Smallest observed value t with share(x >= t) <= rate (ties counted, since a score equal to the threshold
+    alerts). When even the largest value is reached by more than `rate` of the windows (few windows, or many tied
+    at the maximum), the threshold is just above the largest value, so no clean window alerts. inf without data."""
+    x = np.asarray(x, float); x = np.sort(x[~np.isnan(x)])
+    if not len(x):
+        return float("inf")
+    u = np.unique(x)
+    share = 1.0 - np.searchsorted(x, u, side="left") / float(len(x))
+    ok = np.nonzero(share <= rate)[0]
+    return float(u[ok[0]]) if len(ok) else float(np.nextafter(u[-1], np.inf))
+
+
+def calibrate(clean_scores: List[Dict[str, float]], warn_rate: float = 0.05, crit_rate: float = 0.01,
+              crit_min: float = 1.5) -> Dict[str, Any]:
+    """Thresholds from clean (no-drift) windows. Warning: per signal, at most warn_rate / n_signals of clean
+    windows reach it (Bonferroni, so at most about warn_rate warn on any signal). Critical: at most crit_rate of
+    clean windows reach the overall normalised score max_s(score_s / warning_s), and never below crit_min times the
+    warning level (fixed design rule, so critical always means well past a warning). A signal that cannot meet the
+    rate because many clean windows tie at its maximum score is listed in `saturated` (with PSI / KS, whose maximum is
+    fixed, it can then never alert)."""
     k = len(SIGNALS)
     warn = {}
     for s in SIGNALS:
+        warn[s] = max(upper_threshold(np.array([w[s] for w in clean_scores], float), warn_rate / k), 1e-6)
+    sat = []
+    for s in SIGNALS:
         x = np.array([w[s] for w in clean_scores], float); x = x[~np.isnan(x)]
-        warn[s] = float(np.quantile(x, 1 - warn_rate / k)) if len(x) else float("inf")
-        warn[s] = max(warn[s], 1e-6)
+        if len(x) and np.sum(x == x.max()) > 1 and np.mean(x == x.max()) > warn_rate / k:
+            sat.append(s)
     norm = np.array([overall(w, warn) for w in clean_scores], float); norm = norm[~np.isnan(norm)]
-    crit = float(max(1.0, np.quantile(norm, 1 - crit_rate))) if len(norm) else float("inf")
-    return {"warning": warn, "critical_overall": crit, "warn_rate": warn_rate, "crit_rate": crit_rate,
-            "clean_windows": len(clean_scores)}
+    crit = max(crit_min, upper_threshold(norm, crit_rate)) if len(norm) else float("inf")
+    thr = {"warning": warn, "critical_overall": crit, "warn_rate": warn_rate, "crit_rate": crit_rate, "crit_min": crit_min,
+           "clean_windows": len(clean_scores), "saturated": sat}
+    sev = [severity(w, thr) for w in clean_scores]
+    thr["clean_rate"] = {v: (float(np.mean([x == v for x in sev])) if sev else None) for v in SEVERITY}
+    return thr
 
 
 def normalised(scores: Dict[str, float], warn: Dict[str, float]) -> Dict[str, float]:
-    return {s: (scores[s] / warn[s] if not np.isnan(scores[s]) else float("nan")) for s in SIGNALS}
+    """score / warning level per signal; NaN when the score or the threshold is missing (None / inf)."""
+    out = {}
+    for s in SIGNALS:
+        w, x = warn.get(s), scores.get(s, float("nan"))
+        out[s] = x / w if (w is not None and np.isfinite(w) and x is not None and not np.isnan(x)) else float("nan")
+    return out
 
 
 def overall(scores: Dict[str, float], warn: Dict[str, float]) -> float:
@@ -108,7 +168,8 @@ def severity(scores: Dict[str, float], thr: Dict[str, Any]) -> str:
     o = overall(scores, thr["warning"])
     if np.isnan(o) or o < 1.0:
         return "ok"
-    return "critical" if o >= thr["critical_overall"] else "warning"
+    c = thr.get("critical_overall")
+    return "critical" if c is not None and np.isfinite(c) and o >= c else "warning"
 
 
 def explain(scores: Dict[str, float], thr: Dict[str, Any], baseline: Dict[str, np.ndarray],

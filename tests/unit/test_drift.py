@@ -67,3 +67,37 @@ def test_perturbations_change_the_image_as_intended():
     assert out["blur_strong"].std() < a.std() and out["haze_strong"].std() < a.std()
     assert (out["shift_strong"][:3, :3] == 0).all() and (out["shift_strong"][10, 10] == a[7, 7]).all()   # 0.05*60 = 3 px
     assert all(out[n].shape == a.shape for n in names)
+
+
+def test_tie_safe_thresholds_hold_the_clean_rate():
+    # 30% of clean windows sit at the maximum score (saturated KS / PSI): a plain quantile put the threshold there
+    # and every one of them warned. The tie-safe rule must disable the signal instead of exceeding the rate.
+    x = np.r_[np.full(300, 1.0), np.linspace(0, 0.9, 700)]
+    assert dm.upper_threshold(x, 0.05) > 1.0 and np.mean(x >= dm.upper_threshold(x, 0.05)) == 0
+    y = np.r_[np.full(30, 1.0), np.linspace(0, 0.9, 970)]          # 3% at the maximum: threshold can be met
+    t = dm.upper_threshold(y, 0.05)
+    assert np.mean(y >= t) <= 0.05 and t < 1.0
+    rng = np.random.RandomState(2)
+    clean = []
+    for _ in range(800):
+        w = {s: float(rng.rand()) for s in dm.SIGNALS}
+        w["brightness"] = 1.0 if rng.rand() < 0.2 else float(rng.rand() * 0.5)
+        clean.append(w)
+    thr = dm.calibrate(clean, 0.05, 0.01)
+    assert thr["saturated"] == ["brightness"] and thr["clean_rate"]["ok"] >= 0.94
+    assert thr["clean_rate"]["critical"] <= 0.011 and thr["critical_overall"] > 1.0
+    assert dm.severity(dict(clean[0], brightness=1.0), thr) == "ok"       # saturated signal cannot alert
+
+
+def test_median_shift_and_misalignment():
+    rng = np.random.RandomState(3)
+    q = dm.baseline_quantiles(rng.normal(0, 1, 5000))
+    assert dm.median_shift(q, rng.normal(0, 1, 8)) < 1.0 < dm.median_shift(q, rng.normal(3, 1, 8))
+    assert dm.median_shift(q, rng.normal(6, 1, 8)) > dm.median_shift(q, rng.normal(3, 1, 8))   # does not saturate
+    from src.occupancy import association as asc
+    slots = asc.prepare_slots([[0, 0, 10, 0, 10, 10, 0, 10], [20, 0, 30, 0, 30, 10, 20, 10]])
+    on = np.array([[0, 0, 10, 10, 0.9], [20, 0, 30, 10, 0.9]], float)
+    off = on + np.array([4, 4, 4, 4, 0.0])
+    assert dm.slot_misalignment(asc.image_pairs(slots, on), 0.5) == pytest.approx(0.0)
+    assert dm.slot_misalignment(asc.image_pairs(slots, off), 0.5) > 0.5
+    assert np.isnan(dm.slot_misalignment(asc.image_pairs(slots, on), 0.95))       # nothing accepted
