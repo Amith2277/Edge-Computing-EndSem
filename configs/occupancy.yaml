@@ -6,12 +6,16 @@ association:
   exclusive: true            # each detection supports only the slot it overlaps most
   min_roi_fraction: 0.5      # slots less than this inside the annotation rectangle are 'unknown'
 decision:
-  threshold_type: score      # uncalibrated detector score (max confidence of supporting detections); calibration: notebook 11
+  threshold_type: probability   # DEPLOYED: isotonic P(O) > C_FO / (C_FO + C_FV) = 1/6 (notebook 11)
+  # score_threshold below = notebook 07 cost-agnostic choice, kept as the fallback when no calibrator is loaded
   score_threshold:           # per model, max val macro-F1; flat between ~0.1 and ~0.6
     yolo11n: 0.225
     yolo11s: 0.2
-  cost_false_vacant: null    # C_FV: a deployment choice (no measured cost exists); notebook 11 reports ratios 0.5-20
-  cost_false_occupied: null  # C_FO  (occupied if P(O) > C_FO / (C_FO + C_FV) when calibrated)
+  cost_false_vacant: 5       # C_FV: deployment choice (2026-11-25): a false vacant sends a driver to a full slot.
+  cost_false_occupied: 1     # C_FO  Not a measured cost; notebook 11 reports ratios 0.5-20.
+  probability_threshold: 0.1667   # = C_FO / (C_FO + C_FV); test score equivalents n 0.113, s 0.050
+  # test at ratio 5 (per 1000 decisions): n 9.40 -> 8.19 (FV 343 -> 238), s 8.22 -> 7.01 (FV 329 -> 215)
+  # (occupied if P(O) > C_FO / (C_FO + C_FV) when calibrated)
   calibration:               # notebook 11 full run 2026-11-24 (run cst-20261124-174633-178122)
     method: isotonic         # chosen by val cross-fitted log loss over Platt for both models
     params: artifacts/cost_sensitive/cost_sensitive_record.json   # calibration.<model>.params.isotonic (step function)

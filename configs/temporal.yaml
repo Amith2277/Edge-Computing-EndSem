@@ -2,8 +2,11 @@
 # Chosen on val by notebook 08 (full run 2026-11-24, 47 val sequences, 205,291 slot-frames). Rule fixed before
 # test: within 0.001 of the best val macro-F1, fewest false transitions per 1000 slot-frames, then shortest delay.
 # Frames are 5 min (PKLot) / 30 min (CNRPark-EXT) apart, so k counts frames at that spacing.
-method: gated                # "none" | "consecutive" | "window" | "weighted_vote" | "gated"
-per_model:
+method: asymmetric           # DEPLOYED (C_FV/C_FO = 5, configs/occupancy.yaml): see `deployed` below
+deployed:                    # val-chosen by notebook 11 for ratio 5, both models
+  yolo11n: {method: asymmetric, k_occ: 1, k_vac: 3, gate: 0.75}
+  yolo11s: {method: asymmetric, k_occ: 1, k_vac: 3, gate: 0.75}
+per_model:                   # notebook 08 macro-F1 choice (kept for reference; notebook 11 reads it as the baseline)
   yolo11n: {method: gated, k: 2, gate: 0.75}
   yolo11s: {method: gated, k: 2, gate: 0.75}
 consecutive_required: 2      # k: frames a near-threshold change needs (gated) / every change needs (consecutive)
