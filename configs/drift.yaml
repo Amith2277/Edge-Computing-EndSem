@@ -1,6 +1,28 @@
-# Drift monitoring: alerts only, never automatic retraining.
-signals: [brightness, confidence, density, occlusion, instability, difficulty, slot_risk]
-baseline_window: null
-current_window: null
-test: null                   # e.g. "psi" or "ks"; chosen after synthetic-drift experiments
-severity_thresholds: {warning: null, critical: null}
+# Drift monitoring: alerts for human review only, never automatic retraining (spec section 16).
+# Chosen on val in notebook 12 (run drf-20261127-151253-bc8ec7, full data, YOLO11n, Standard mode replay).
+signals: [brightness, confidence, density, occlusion, instability, difficulty, slot_risk, misalignment]
+baseline: {source: val, per: camera, form: 101 quantiles, path: artifacts/drift/baselines.json}
+current_window: {frames: 8, min_values: 4}     # 40 min on PKLot (5-min frames), 4 h on CNRPark-EXT (30-min frames)
+test: median_shift            # |window median - baseline median| / baseline spread. PSI and KS were not usable on an
+                              # 8-frame window: most signals saturate at the maximum score (PSI 7 of 8, KS 4 of 8), so
+                              # tie-safe thresholds leave them almost unable to alert (val drifted-window alert rate
+                              # PSI 0.0, KS 0.009, median shift 0.243).
+rates: {warn: 0.05, critical: 0.01, critical_min_x_warning: 1.5}   # set, not tuned; tie-safe (src/drift/monitor.py calibrate)
+severity_thresholds:
+  warning:                    # median-shift units, from 1986 clean val windows (leave-own-day-out baselines)
+    brightness: 2.541
+    confidence: 2.002
+    density: 2.108            # saturated: many clean windows tie at the top value
+    occlusion: 3.454
+    instability: 3.75
+    difficulty: 2.176
+    slot_risk: 2.324
+    misalignment: 5.985
+  critical_overall: 1.5       # x warning (max over signals of score / warning)
+record: artifacts/drift/drift_record.json
+# Results (alert rate of windows entirely after the onset of synthetic drift; accuracy drop in slot-accuracy points)
+#   clean val windows: 3.0% warning, 0.15% critical.  TEST natural drift: 0 of 2296 windows alert (all sites, all weather).
+#   TEST, 12 sequences: dark mild/strong 0.58/0.58 (delay ~3 frames), haze 0.25/0.30, JPEG strong 0.20, blur strong 0.06,
+#   noise strong 0.01, no-drift 0.0, before onset 0.0. Camera shift mild/strong only 0.01/0.08 although it costs
+#   20/31 points of accuracy: the monitor does not catch a bumped camera (known limitation; misalignment did not help).
+#   Re-detection of clean frames agrees with notebook 07 on 0.9999 of slot decisions.
