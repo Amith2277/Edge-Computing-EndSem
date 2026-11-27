@@ -66,10 +66,13 @@ class TemporalFilter(object):
         self.pos = np.zeros(n_slots, np.int64)
         self.ema = np.full(n_slots, np.nan)                  # weighted_vote
 
-    def step(self, score: np.ndarray, observed: Optional[np.ndarray] = None) -> np.ndarray:
+    def step(self, score: np.ndarray, observed: Optional[np.ndarray] = None, thr: Optional[float] = None) -> np.ndarray:
+        """One frame. `thr` overrides the score threshold for this frame only (the adaptive controller switches
+        models, and each model has its own threshold); the per-slot state carries over."""
         score = np.asarray(score, float)
         obs = np.ones(self.n, bool) if observed is None else np.asarray(observed, bool)
-        raw = (score >= self.thr).astype(np.int8)
+        th = self.thr if thr is None else float(thr)
+        raw = (score >= th).astype(np.int8)
         m, new = self.cfg["method"], self.state.copy()
         first = obs & (self.state < 0)
         if m == "none":
@@ -87,7 +90,7 @@ class TemporalFilter(object):
             self.run[disagree] += 1
             flip = disagree & (self.run >= k)
             if m == "gated" or (m == "asymmetric" and self.cfg.get("gate") is not None):
-                flip |= disagree & (margin(score, self.thr) >= float(self.cfg["gate"]))
+                flip |= disagree & (margin(score, th) >= float(self.cfg["gate"]))
             new[flip] = raw[flip]
             self.run[flip] = 0
         elif m == "window":
@@ -107,7 +110,7 @@ class TemporalFilter(object):
             upd = obs & ~init
             self.ema[init] = score[init]
             self.ema[upd] = a * score[upd] + (1.0 - a) * self.ema[upd]
-            new[obs] = (self.ema[obs] >= self.thr).astype(np.int8)
+            new[obs] = (self.ema[obs] >= th).astype(np.int8)
         self.state = new
         out = new.copy()
         out[~obs] = -1

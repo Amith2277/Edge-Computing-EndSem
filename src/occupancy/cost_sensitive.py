@@ -78,6 +78,19 @@ class Isotonic(object):
         return {"method": "isotonic", "x": [round(float(v), 6) for v in self.x], "y": [round(float(v), 6) for v in self.y]}
 
 
+def score_threshold_for(cal, p_thr: float) -> float:
+    """Score t such that the calibrated rule P(O) > p_thr equals score >= t (both calibrators are non-decreasing).
+    -inf: every score is occupied; inf: none is."""
+    if getattr(cal, "name", None) == "platt" or isinstance(cal, Platt):
+        if cal.a <= 0:
+            return float("inf") if cal.predict(np.array([0.0]))[0] <= p_thr else float("-inf")
+        return float(np.nextafter((np.log(p_thr / (1.0 - p_thr)) - cal.b) / cal.a, np.inf))
+    above = np.nonzero(cal.y > p_thr)[0]
+    if not len(above):
+        return float("inf")
+    return float("-inf") if above[0] == 0 else float(cal.x[above[0]])
+
+
 def make(method: str):
     if method == "platt":
         return Platt()

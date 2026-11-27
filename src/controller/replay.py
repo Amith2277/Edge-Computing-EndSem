@@ -12,6 +12,8 @@ seq (one camera sequence, frames in time order):
   sec (T,), n_cols, cols[t] (slot column indices), valid[t], gt[t], B (T,), M (T,) scaled with NaN = missing,
   fixable (T,), out[model] = {"score": [arrays], "detf": [dicts], "occ": [arrays]}
 ctx: thr {model}, wD (6,), wR (4,), agg {"method", "k"}, age_ref_s, inst_frames, occ_scale, light, heavy
+  optional: filter (temporal filter cfg, src/temporal/filters.py) applied to every executed frame's slot scores at
+  that model's threshold; the served state is the filtered state. fixable_key (default "fixable") for the oracle.
 """
 from typing import Any, Dict, List
 
@@ -19,6 +21,7 @@ import numpy as np
 
 from src.controller.adaptive import ModeController, SlotTracker
 from src.scene_analysis import features as sf
+from src.temporal.filters import TemporalFilter
 from src.slot_risk import risk as rk
 
 STRATEGIES = ("fixed_n", "fixed_s", "periodic_n", "scene_only", "adaptive", "oracle")
@@ -39,6 +42,7 @@ def run_sequence(seq: Dict[str, Any], strategy: str, cfg: Dict[str, Any], ctx: D
     tr = SlotTracker(S)
     ctl = ModeController(_controller_cfg(strategy, cfg, ctx)) if strategy in ("scene_only", "adaptive") else None
     last_detf, hist = None, []
+    filt = TemporalFilter(S, ctx["filter"], ctx["thr"][ctx["light"]]) if ctx.get("filter") else None
     out = {"pred": [], "age_s": [], "stale": [], "model": [], "mode": [], "reasons": [], "D": np.full(T, np.nan),
            "Rg": np.full(T, np.nan), "Rmax": np.full(T, np.nan), "F": np.full((T, 6), np.nan)}   # F: B, M, C, V, O, S
     for t in range(T):
@@ -72,7 +76,7 @@ def run_sequence(seq: Dict[str, Any], strategy: str, cfg: Dict[str, Any], ctx: D
             run = t % int(cfg.get("cadence", 2)) == 0
             dec = {"mode": "reduced", "run": run, "model": ctx["light"] if run else None, "reasons": []}
         elif strategy == "oracle":
-            heavy = seq["fixable"][t] > 0
+            heavy = seq[ctx.get("fixable_key", "fixable")][t] > 0
             dec = {"mode": "enhanced" if heavy else "standard", "run": True, "model": ctx["heavy"] if heavy else ctx["light"],
                    "reasons": ["oracle"] if heavy else []}
         else:
@@ -83,7 +87,12 @@ def run_sequence(seq: Dict[str, Any], strategy: str, cfg: Dict[str, Any], ctx: D
             v = np.asarray(seq["valid"][t], bool)
             tr.observe(cols[v], np.asarray(o["score"][t])[v], ctx["thr"][m], np.asarray(o["occ"][t])[v], seq["sec"][t])
             last_detf = o["detf"][t]
-        served = tr.serve(vcols)                      # skipped frame: the last reliable state, never a fresh 'vacant'
+            if filt is not None:
+                sc = np.zeros(S); ob = np.zeros(S, bool)
+                sc[cols[v]] = np.asarray(o["score"][t])[v]; ob[cols[v]] = True
+                filt.step(sc, ob, thr=ctx["thr"][m])
+        # skipped frame: the last reliable state, never a fresh 'vacant'
+        served = filt.state[np.asarray(vcols, int)].copy() if filt is not None else tr.serve(vcols)
         age = tr.ages(vcols, seq["sec"][t])
         if dec["run"]:
             full = np.full(S, -1, np.int8); full[vcols] = served; hist.append(full)
