@@ -28,3 +28,6 @@ detector:
   conf_threshold: 0.05       # floor of the cached detections; the slot decision uses decision.score_threshold
   nms_iou: 0.7
   imgsz: 640
+# End-to-end check (notebook 13, test, inside AdaptivePark, cost@5 per 1000 decisions): nb07 rule 8.57 -> deployed
+# rule (isotonic + asymmetric filter) 7.54. The two parts are redundant rather than additive: isotonic alone 7.56,
+# filter alone 7.48 (differences within bootstrap noise; deployed rule kept as chosen on val).
