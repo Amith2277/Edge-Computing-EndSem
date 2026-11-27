@@ -25,6 +25,9 @@ slot_risk:                   # R = alpha*U + beta*Delta + gamma*A + delta*O
 # Rule (fixed before test): cheapest setting with val macro-F1 >= n + 0.5 x (s - n) = 0.9947. Thresholds are val
 # quantiles of D / global risk / max slot risk under Standard mode. Cost unit: YOLO11s = 2.63 x YOLO11n (Kaggle T4
 # batched ratio, NOT a Jetson number). Test: macro-F1 0.9966 at cost 1.313 (n 0.9962 / 1.0, s 0.9971 / 2.63).
+# Measured cost ratio (notebook 14, Kaggle, NOT Jetson): YOLO11s / YOLO11n median latency at batch 1 is 1.01 on the
+# T4 GPU (call overhead dominates) and 2.16 on its 4-core CPU; 1.32 at batch 16. The 2.63 above is a batched T4 figure.
+# Whether the controller saves time on the edge depends on the Orin's own ratio (plan G7).
 operating_point: accuracy    # "accuracy" (default, below) or "efficiency" (efficiency_point)
 modes:
   reduced:  {model: yolo11n, cadence_frames: 2}   # unused at the accuracy point (reduced_below is null)
